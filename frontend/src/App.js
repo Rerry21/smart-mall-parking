@@ -7,12 +7,12 @@ import DriverPortal   from './pages/driver/DriverPortal';
 import GuardPortal    from './pages/watchman/GuardPortal';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminLogin     from './pages/admin/AdminLogin';
+import LandingPage    from './pages/LandingPage';
 
-const API = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const PHONE_LIMITS = { '+254': 9, '+1': 10, '+44': 10 };
 
-// ── Protected route: only lets admin token through ──
 function AdminRoute({ children }) {
   const token = localStorage.getItem('token');
   const user  = JSON.parse(localStorage.getItem('user') || '{}');
@@ -38,6 +38,7 @@ function MainPage() {
   const [showConfirm, setShowConfirm]         = useState(false);
 
   // ── Forgot password flow state ──
+  // fpStep: null | 'phone' | 'otp' | 'newpass'
   const [fpStep, setFpStep]       = useState(null);
   const [fpCC, setFpCC]           = useState('+254');
   const [fpPhone, setFpPhone]     = useState('');
@@ -84,7 +85,7 @@ function MainPage() {
     finally  { setFpLoading(false); }
   };
 
-  // ── Step 2: Verify OTP ──
+  // ── Step 2: Verify OTP (demo: 1234) ──
   const handleFpVerifyOtp = async () => {
     if (fpOtp.length !== 4) { setFpError('Enter the 4-digit OTP'); return; }
     setFpLoading(true); setFpError('');
@@ -154,6 +155,9 @@ function MainPage() {
     finally  { setLoading(false); }
   };
 
+  // ────────────────────────────────
+  //  FORGOT PASSWORD STEPS UI
+  // ────────────────────────────────
   const stepIndex = { phone: 0, otp: 1, newpass: 2 };
 
   const ForgotPasswordView = () => (
@@ -230,6 +234,7 @@ function MainPage() {
               onFocus={e => e.target.style.borderColor = 'rgba(59,130,246,0.6)'}
               onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
           </div>
+          {/* Demo hint */}
           <div style={{ padding: '10px 14px', borderRadius: '10px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', fontSize: '12px', color: '#fbbf24', textAlign: 'center', marginBottom: '4px' }}>
             💡 Demo OTP is <strong style={{ letterSpacing: '3px' }}>1234</strong>
           </div>
@@ -297,6 +302,9 @@ function MainPage() {
     </div>
   );
 
+  // ────────────────────────────────
+  //  MAIN RENDER
+  // ────────────────────────────────
   return (
     <div style={{
       minHeight: '100vh', width: '100%', position: 'relative',
@@ -316,7 +324,7 @@ function MainPage() {
         animation: 'slideUp 0.5s cubic-bezier(.4,0,.2,1)',
       }}>
 
-        {/* Header */}
+        {/* Header — always visible */}
         <div style={{ padding: '36px 36px 28px', borderBottom: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '52px', height: '52px', background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)', borderRadius: '16px', fontSize: '22px', marginBottom: '16px', boxShadow: '0 8px 24px rgba(59,130,246,0.4)' }}>🅿️</div>
           <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: '26px', fontWeight: 800, color: '#fff', letterSpacing: '-0.5px', margin: 0 }}>Two Rivers Mall</h1>
@@ -439,7 +447,7 @@ function MainPage() {
                 </div>
               </div>
 
-              {/* Forgot password link */}
+              {/* Forgot password link — login only */}
               {tab === 'login' && (
                 <div style={{ textAlign: 'right', marginBottom: '20px' }}>
                   <button onClick={() => { setFpStep('phone'); setFpError(''); }} style={{ background: 'transparent', border: 'none', color: '#60a5fa', fontSize: '13px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", padding: 0 }}>
@@ -498,7 +506,8 @@ export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/"            element={<MainPage />}       />
+        <Route path="/"            element={<LandingPage />}    />
+        <Route path="/login"       element={<MainPage />}       />
         <Route path="/driver"      element={<DriverPortal />}   />
         <Route path="/watchman"    element={<GuardPortal />}    />
         <Route path="/admin-login" element={<AdminLogin />}     />
