@@ -45,7 +45,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10kb' }));
-app.use(mongoSanitize());
+app.use(mongoSanitize({ allowDots: true, replaceWith: '_' }));
 app.use(hpp());
 
 const generalLimiter = rateLimit({
