@@ -49,18 +49,17 @@ app.use(hpp());
 // ── Custom NoSQL injection sanitizer (replaces express-mongo-sanitize) ──
 app.use((req, res, next) => {
   const sanitize = (obj) => {
-    if (obj && typeof obj === 'object') {
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
       Object.keys(obj).forEach(key => {
-        if (key.startsWith('$') || key.includes('.')) {
+        if (key.startsWith('$')) {
           delete obj[key];
-        } else {
+        } else if (typeof obj[key] === 'object') {
           sanitize(obj[key]);
         }
       });
     }
   };
-  if (req.body)   sanitize(req.body);
-  if (req.params) sanitize(req.params);
+  if (req.body && typeof req.body === 'object') sanitize(req.body);
   next();
 });
 
