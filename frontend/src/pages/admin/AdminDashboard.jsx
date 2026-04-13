@@ -1,7 +1,105 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const API = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+// ══════════════════════════════════════════
+// DRIVERS SECTION COMPONENT
+// ══════════════════════════════════════════
+function DriversSection() {
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDrivers = async () => {
+      try {
+        const res  = await fetch(`${API}/api/admin/drivers`);
+        const data = await res.json();
+        if (data.success) setDrivers(data.data);
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    };
+    fetchDrivers();
+  }, []);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'No bookings yet';
+    return new Date(dateStr).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+        <div>
+          <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '28px', fontWeight: 800 }}>Drivers</div>
+          <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>{drivers.length} registered driver{drivers.length !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '60px', color: '#6b7280' }}>
+          <div style={{ fontSize: '32px', marginBottom: '12px' }}>🚗</div>
+          <p>Loading drivers...</p>
+        </div>
+      ) : drivers.length === 0 ? (
+        <div style={{ background: '#13161b', border: '1px solid #252a33', borderRadius: '18px', padding: '60px', textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ fontSize: '40px', marginBottom: '12px' }}>🚗</div>
+          <p style={{ fontSize: '15px', fontWeight: 500 }}>No drivers registered yet</p>
+          <p style={{ fontSize: '13px', marginTop: '8px' }}>Drivers who register via the login page will appear here</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(280px,1fr))', gap: '16px' }}>
+          {drivers.map(d => (
+            <div key={d._id} style={{ background: '#13161b', border: '1px solid #252a33', borderRadius: '18px', padding: '22px', transition: 'border-color 0.2s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = '#353c4a'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#252a33'}>
+
+              {/* Top row */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+                <div style={{ width: '52px', height: '52px', borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', flexShrink: 0 }}>🚗</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '16px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</div>
+                  <div style={{ fontSize: '11px', background: 'rgba(59,130,246,0.12)', color: '#60a5fa', padding: '2px 8px', borderRadius: '20px', display: 'inline-block', marginTop: '4px', fontWeight: 600 }}>DRIVER</div>
+                </div>
+              </div>
+
+              {/* Details */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '13px', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>📱</span> {d.phone || 'N/A'}
+                </div>
+                {d.plateNumber && (
+                  <div style={{ fontSize: '13px', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🚘</span> {d.plateNumber}
+                  </div>
+                )}
+                <div style={{ fontSize: '11px', color: '#4b5563' }}>
+                  Joined {formatDate(d.createdAt)}
+                </div>
+              </div>
+
+              {/* Booking stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', borderTop: '1px solid #252a33', paddingTop: '14px' }}>
+                <div style={{ background: '#1a1e25', borderRadius: '10px', padding: '10px 12px' }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '20px', fontWeight: 800, color: '#3b82f6' }}>{d.bookingCount}</div>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>Total Bookings</div>
+                </div>
+                <div style={{ background: '#1a1e25', borderRadius: '10px', padding: '10px 12px' }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '20px', fontWeight: 800, color: '#22c55e' }}>KSh {d.totalPaid}</div>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>Total Paid</div>
+                </div>
+                <div style={{ background: '#1a1e25', borderRadius: '10px', padding: '10px 12px', gridColumn: '1 / -1' }}>
+                  <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '2px' }}>Last Booking</div>
+                  <div style={{ fontSize: '13px', color: '#f0f2f5', fontWeight: 500 }}>{formatDate(d.lastBookingDate)}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════
 // GUARDS SECTION COMPONENT
@@ -894,16 +992,7 @@ export default function AdminDashboard() {
           {activeNav === 'guards' && <GuardsSection />}
 
           {/* ── DRIVERS ── */}
-          {activeNav === 'drivers' && (
-            <div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '28px', fontWeight: 800, marginBottom: '28px' }}>Drivers</div>
-              <div style={{ background: '#13161b', border: '1px solid #252a33', borderRadius: '18px', padding: '40px', textAlign: 'center', color: '#6b7280' }}>
-                <div style={{ fontSize: '40px', marginBottom: '12px' }}>🚗</div>
-                <p style={{ fontSize: '15px', fontWeight: 500 }}>Driver directory coming soon</p>
-                <p style={{ fontSize: '13px', marginTop: '8px' }}>Registered drivers and their booking history will appear here</p>
-              </div>
-            </div>
-          )}
+          {activeNav === 'drivers' && <DriversSection />}
 
           {/* ── ALERTS ── */}
           {activeNav === 'alerts' && (
