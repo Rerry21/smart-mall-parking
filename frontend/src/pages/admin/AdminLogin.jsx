@@ -7,6 +7,7 @@ export default function AdminLogin() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
 
@@ -125,6 +126,22 @@ export default function AdminLogin() {
           cursor: not-allowed;
           box-shadow: none;
         }
+
+        .eye-btn {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          font-size: 17px;
+          padding: 4px;
+          line-height: 1;
+          color: #6b7280;
+          transition: color 0.2s;
+        }
+        .eye-btn:hover { color: #9ca3af; }
       `}</style>
 
       <div className="admin-login-bg" style={{ position: 'fixed', inset: 0, zIndex: 0 }} />
@@ -184,15 +201,11 @@ export default function AdminLogin() {
             fontSize: '24px', fontWeight: 800,
             color: '#f0f2f5', letterSpacing: '-0.5px',
             margin: 0,
-          }}>
-            Admin Access
-          </h1>
+          }}>Admin Access</h1>
           <p style={{
             color: '#6b7280', fontSize: '13px',
             marginTop: '6px', letterSpacing: '0.3px',
-          }}>
-            Two Rivers Mall · Restricted Area
-          </p>
+          }}>Two Rivers Mall · Restricted Area</p>
 
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
@@ -213,6 +226,7 @@ export default function AdminLogin() {
         {/* Form */}
         <div style={{ padding: '28px 36px 36px' }}>
 
+          {/* Username */}
           <div style={{ marginBottom: '18px' }}>
             <label style={labelStyle}>Username</label>
             <input
@@ -226,19 +240,27 @@ export default function AdminLogin() {
             />
           </div>
 
+          {/* Password */}
           <div style={{ marginBottom: '24px' }}>
             <label style={labelStyle}>Password</label>
-            <input
-              className="admin-input"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Enter admin password"
-              autoComplete="current-password"
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                className="admin-input"
+                type={showPass ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Enter admin password"
+                autoComplete="current-password"
+                style={{ paddingRight: '44px' }}
+              />
+              <button className="eye-btn" onClick={() => setShowPass(p => !p)}>
+                {showPass ? '🙈' : '👁️'}
+              </button>
+            </div>
           </div>
 
+          {/* Error */}
           {error && (
             <div style={{
               marginBottom: '18px',
@@ -254,11 +276,7 @@ export default function AdminLogin() {
             </div>
           )}
 
-          <button
-            className="login-btn"
-            onClick={handleLogin}
-            disabled={loading}
-          >
+          <button className="login-btn" onClick={handleLogin} disabled={loading}>
             {loading ? 'Authenticating...' : 'Access Dashboard →'}
           </button>
 
