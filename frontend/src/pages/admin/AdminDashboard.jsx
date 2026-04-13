@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const API = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
 
 // ══════════════════════════════════════════
 // GUARDS SECTION COMPONENT
