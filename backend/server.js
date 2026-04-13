@@ -2,7 +2,6 @@ require('dotenv').config();
 const express        = require('express');
 const cors           = require('cors');
 const helmet         = require('helmet');
-const mongoSanitize  = require('express-mongo-sanitize');
 const hpp            = require('hpp');
 const rateLimit      = require('express-rate-limit');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
@@ -45,8 +44,25 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(express.json({ limit: '10kb' }));
-app.use(mongoSanitize({ allowDots: true, replaceWith: '_' }));
 app.use(hpp());
+
+// ── Custom NoSQL injection sanitizer (replaces express-mongo-sanitize) ──
+app.use((req, res, next) => {
+  const sanitize = (obj) => {
+    if (obj && typeof obj === 'object') {
+      Object.keys(obj).forEach(key => {
+        if (key.startsWith('$') || key.includes('.')) {
+          delete obj[key];
+        } else {
+          sanitize(obj[key]);
+        }
+      });
+    }
+  };
+  if (req.body)   sanitize(req.body);
+  if (req.params) sanitize(req.params);
+  next();
+});
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
