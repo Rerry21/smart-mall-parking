@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 
-const API    = process.env.REACT_APP_API_URL    || 'http://localhost:5000';
-const SOCKET = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
+const API    = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+const SOCKET = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
 
 const GuardPortal = () => {
   const [user, setUser]                   = useState(null);
