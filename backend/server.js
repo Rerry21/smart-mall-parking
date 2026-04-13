@@ -1,84 +1,51 @@
 require('dotenv').config();
-const express       = require('express');
-const cors          = require('cors');
-const helmet        = require('helmet');
-const hpp           = require('hpp');
-const rateLimit     = require('express-rate-limit');
+const express        = require('express');
+const cors           = require('cors');
+const helmet         = require('helmet');
+const mongoSanitize  = require('express-mongo-sanitize');
+const hpp            = require('hpp');
+const rateLimit      = require('express-rate-limit');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const http          = require('http');
-const { Server }    = require('socket.io');
-const multer        = require('multer');
-const path          = require('path');
-const fs            = require('fs');
-const bcrypt        = require('bcryptjs');
+const http           = require('http');
+const { Server }     = require('socket.io');
+const multer         = require('multer');
+const path           = require('path');
+const fs             = require('fs');
+const bcrypt         = require('bcryptjs');
 
-// Routes
 const adminAuthRouter = require('./routes/adminAuth');
 const authRouter      = require('./routes/auth');
 
 const app    = express();
 const server = http.createServer(app);
-
-// ============================================
-// ALLOWED ORIGINS
-// ============================================
-const allowedOrigins = [
-  'http://localhost:3000',
-  'http://localhost:3001',
-  `http://${process.env.LOCAL_IP || '192.168.0.102'}:3000`,
-  'https://smart-mall-parking-frontend.vercel.app',
-];
-
-const io = new Server(server, {
+const io     = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      `http://${process.env.LOCAL_IP || '192.168.0.102'}:3000`,
+    ],
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
 });
 
 // ============================================
-// MANUAL MONGODB SANITIZER
-// ============================================
-function sanitizeMongo(obj) {
-  if (obj && typeof obj === 'object') {
-    for (const key of Object.keys(obj)) {
-      if (key.startsWith('$') || key.includes('.')) {
-        delete obj[key];
-      } else {
-        sanitizeMongo(obj[key]);
-      }
-    }
-  }
-}
-
-// ============================================
 // SECURITY MIDDLEWARE
 // ============================================
-
-// 1. Helmet
 app.use(helmet());
-
-// 2. CORS
 app.use(cors({
-  origin: allowedOrigins,
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    `http://${process.env.LOCAL_IP || '192.168.0.102'}:3000`,
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-
-// 3. Body parser
 app.use(express.json({ limit: '10kb' }));
-
-// 4. MongoDB sanitize
-app.use((req, res, next) => {
-  sanitizeMongo(req.body);
-  sanitizeMongo(req.params);
-  next();
-});
-
-// 5. HPP
+app.use(mongoSanitize());
 app.use(hpp());
 
-// 6. General rate limiter
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -88,7 +55,6 @@ const generalLimiter = rateLimit({
 });
 app.use('/api/', generalLimiter);
 
-// 7. Auth rate limiter
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -99,12 +65,11 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login',       authLimiter);
 app.use('/api/admin-auth/login', authLimiter);
 
-// ── Photo uploads folder ──
+// ── Uploads ──
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
 
-// ── Multer config ──
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename:    (req, file, cb) => cb(null, `guard-${Date.now()}${path.extname(file.originalname)}`),
@@ -131,30 +96,27 @@ async function connectDB() {
   try {
     await client.connect();
     db = client.db('smart_mall_parking');
-
     slotsCollection    = db.collection('slots');
     driversCollection  = db.collection('drivers');
     bookingsCollection = db.collection('bookings');
     finesCollection    = db.collection('fines');
     usersCollection    = db.collection('users');
-
     console.log('✅ Connected to MongoDB');
-
     app.use('/api/auth',       authRouter(db));
     app.use('/api/admin-auth', adminAuthRouter(db));
-
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error);
     process.exit(1);
   }
 }
 
-// ── Fine calculator ──
+// ── Fine calculator: KSh 300/hr overstay, rounded up to nearest hour ──
 function calculateFine(expiryTime, exitTime) {
   const overstayMs      = exitTime - expiryTime;
   const overstayMinutes = Math.max(0, Math.ceil(overstayMs / (1000 * 60)));
   if (overstayMinutes === 0) return { overstayMinutes: 0, totalFine: 0 };
-  return { overstayMinutes, totalFine: 1000 };
+  const overstayHours = Math.ceil(overstayMinutes / 60);
+  return { overstayMinutes, totalFine: overstayHours * 300 };
 }
 
 // ============================================
@@ -175,9 +137,7 @@ app.get('/api/slots', async (req, res) => {
   try {
     const slots = await slotsCollection.find({}).toArray();
     res.json({ success: true, count: slots.length, data: slots });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.get('/api/slots/:slotCode', async (req, res) => {
@@ -185,9 +145,7 @@ app.get('/api/slots/:slotCode', async (req, res) => {
     const slot = await slotsCollection.findOne({ slotCode: req.params.slotCode });
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
     res.json({ success: true, data: slot });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.put('/api/slots/:slotCode/toggle', async (req, res) => {
@@ -195,14 +153,11 @@ app.put('/api/slots/:slotCode/toggle', async (req, res) => {
     const { slotCode } = req.params;
     const slot = await slotsCollection.findOne({ slotCode });
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
-
     const newStatus = slot.status === 'available' ? 'occupied' : 'available';
     await slotsCollection.updateOne({ slotCode }, { $set: { status: newStatus, updatedAt: new Date() } });
     io.emit('slotStatusUpdate', { slotCode, status: newStatus });
     res.json({ success: true, slotCode, newStatus });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ============================================
@@ -211,7 +166,6 @@ app.put('/api/slots/:slotCode/toggle', async (req, res) => {
 app.post('/api/bookings', async (req, res) => {
   try {
     const { driverPhone, slotCode, duration } = req.body;
-
     if (!driverPhone || !slotCode || !duration)
       return res.status(400).json({ error: 'Missing required fields: driverPhone, slotCode, duration' });
 
@@ -220,8 +174,6 @@ app.post('/api/bookings', async (req, res) => {
     if (slot.status !== 'available') return res.status(409).json({ error: 'Slot is not available' });
 
     const cleanPhone = driverPhone.replace(/^\+/, '');
-
-    // ── Rate: KSh 1/min ──
     const amountPaid = duration * 1;
     const now        = new Date();
     const expiryTime = new Date(now.getTime() + duration * 60 * 1000);
@@ -252,7 +204,6 @@ app.post('/api/bookings', async (req, res) => {
       { slotCode },
       { $set: { status: 'occupied', currentDriverPhone: cleanPhone, currentBookingId: bookingResult.insertedId } }
     );
-
     io.emit('slotStatusUpdate', { slotCode, status: 'occupied', driverPhone: cleanPhone });
 
     res.json({
@@ -261,36 +212,41 @@ app.post('/api/bookings', async (req, res) => {
       booking: { bookingId: bookingResult.insertedId, driverPhone: cleanPhone, slotCode, duration, amountPaid, expiryTime, status: 'active' },
       mpesaCheckoutRequestId: mpesaResponse.CheckoutRequestID,
     });
-
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/payments/mpesa/callback', async (req, res) => {
   try {
     const { Body } = req.body;
     const stkCallback = Body?.stkCallback;
-
     if (stkCallback?.ResultCode === 0) {
       const checkoutRequestId = stkCallback.CheckoutRequestID;
       const mpesaRefId = stkCallback.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value;
       await bookingsCollection.updateOne({ checkoutRequestId }, { $set: { paymentStatus: 'paid', mpesaRefId } });
     }
-
     res.json({ ResultCode: 0, ResultDesc: 'Accepted' });
-  } catch (error) {
-    res.json({ ResultCode: 1, ResultDesc: error.message });
-  }
+  } catch (error) { res.json({ ResultCode: 1, ResultDesc: error.message }); }
 });
 
+// ── Active bookings for a specific driver ──
 app.get('/api/bookings/:driverPhone', async (req, res) => {
   try {
-    const bookings = await bookingsCollection.find({ driverPhone: req.params.driverPhone, status: 'active' }).toArray();
+    const bookings = await bookingsCollection.find({
+      driverPhone: req.params.driverPhone, status: 'active',
+    }).toArray();
     res.json({ success: true, count: bookings.length, data: bookings });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ── ALL active bookings — used by Guard Portal for countdowns ──
+app.get('/api/bookings/active/all', async (req, res) => {
+  try {
+    const bookings = await bookingsCollection.find(
+      { status: 'active' },
+      { projection: { slotCode: 1, driverPhone: 1, expiryTime: 1, entryTime: 1, duration: 1, amountPaid: 1 } }
+    ).toArray();
+    res.json({ success: true, data: bookings });
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 app.post('/api/bookings/:bookingId/checkout', async (req, res) => {
@@ -315,7 +271,7 @@ app.post('/api/bookings/:bookingId/checkout', async (req, res) => {
         bookingId: new ObjectId(bookingId),
         driverPhone: booking.driverPhone, slotCode: booking.slotCode,
         overstayMinutes: fineData.overstayMinutes,
-        totalFine: 1000,
+        totalFine: fineData.totalFine,
         fineStatus: 'unpaid', mpesaRefId: null, createdAt: now, paidAt: null,
       });
       fineId = fineResult.insertedId;
@@ -325,16 +281,13 @@ app.post('/api/bookings/:bookingId/checkout', async (req, res) => {
       { slotCode: booking.slotCode },
       { $set: { status: 'available', currentDriverPhone: null, currentBookingId: null } }
     );
-
     io.emit('slotStatusUpdate', { slotCode: booking.slotCode, status: 'available' });
 
     res.json({
       success: true, message: 'Car checked out successfully',
       checkout: { bookingId, overstayMinutes: fineData.overstayMinutes, totalFine: fineData.totalFine, fineId },
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ============================================
@@ -344,9 +297,7 @@ app.get('/api/fines/:driverPhone', async (req, res) => {
   try {
     const fines = await finesCollection.find({ driverPhone: req.params.driverPhone }).toArray();
     res.json({ success: true, count: fines.length, data: fines });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ============================================
@@ -372,17 +323,35 @@ app.get('/api/admin/dashboard', async (req, res) => {
       dashboard: {
         totalRevenue:   revenueData[0]?.total    || 0,
         totalFines:     totalFinesData[0]?.total || 0,
-        occupiedSlots,
-        totalSlots,
+        occupiedSlots, totalSlots,
         availableSlots:  totalSlots - occupiedSlots,
         occupancyRate:   totalSlots > 0 ? `${((occupiedSlots / totalSlots) * 100).toFixed(1)}%` : '0%',
-        activeBookings,
-        unpaidFines,
+        activeBookings, unpaidFines,
       },
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ============================================
+// ADMIN — DRIVERS DIRECTORY
+// ============================================
+app.get('/api/admin/drivers', async (req, res) => {
+  try {
+    const drivers = await usersCollection
+      .find({ role: 'driver' }, { projection: { password: 0 } })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const driversWithStats = await Promise.all(drivers.map(async (driver) => {
+      const bookings     = await bookingsCollection.find({ driverPhone: driver.phone }).toArray();
+      const totalPaid    = bookings.reduce((sum, b) => sum + (b.amountPaid || 0), 0);
+      const bookingCount = bookings.length;
+      const lastBooking  = [...bookings].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+      return { ...driver, bookingCount, totalPaid, lastBookingDate: lastBooking?.createdAt || null };
+    }));
+
+    res.json({ success: true, data: driversWithStats });
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 // ============================================
@@ -395,15 +364,12 @@ app.get('/api/admin/guards', async (req, res) => {
       .sort({ createdAt: -1 })
       .toArray();
     res.json({ success: true, data: guards });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 app.post('/api/admin/guards', upload.single('photo'), async (req, res) => {
   try {
     const { name, phone, nationalId, assignedFloor, password } = req.body;
-
     if (!name || !phone || !nationalId || !password)
       return res.status(400).json({ success: false, error: 'Name, phone, national ID and password are required.' });
 
@@ -412,7 +378,6 @@ app.post('/api/admin/guards', upload.single('photo'), async (req, res) => {
       return res.status(409).json({ success: false, error: 'A user with this phone number or national ID already exists.' });
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const guard = {
       name, phone, nationalId,
       assignedFloor: assignedFloor || 'Level 1',
@@ -421,13 +386,9 @@ app.post('/api/admin/guards', upload.single('photo'), async (req, res) => {
       photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
       createdAt: new Date(),
     };
-
     const result = await usersCollection.insertOne(guard);
     res.status(201).json({ success: true, guardId: result.insertedId });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 app.put('/api/admin/guards/:id', upload.single('photo'), async (req, res) => {
@@ -441,16 +402,11 @@ app.put('/api/admin/guards/:id', upload.single('photo'), async (req, res) => {
       return res.status(404).json({ success: false, error: 'Guard not found.' });
 
     const { name, phone, nationalId, assignedFloor, password } = req.body;
-
     if (phone || nationalId) {
       const orConditions = [];
       if (phone)      orConditions.push({ phone });
       if (nationalId) orConditions.push({ nationalId });
-
-      const duplicate = await usersCollection.findOne({
-        _id: { $ne: new ObjectId(id) },
-        $or: orConditions,
-      });
+      const duplicate = await usersCollection.findOne({ _id: { $ne: new ObjectId(id) }, $or: orConditions });
       if (duplicate)
         return res.status(409).json({ success: false, error: 'Another user already has this phone or national ID.' });
     }
@@ -468,13 +424,9 @@ app.put('/api/admin/guards/:id', upload.single('photo'), async (req, res) => {
       }
       updates.photoUrl = `/uploads/${req.file.filename}`;
     }
-
     await usersCollection.updateOne({ _id: new ObjectId(id) }, { $set: updates });
     res.json({ success: true, message: 'Guard updated successfully.' });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 app.delete('/api/admin/guards/:id', async (req, res) => {
@@ -491,13 +443,9 @@ app.delete('/api/admin/guards/:id', async (req, res) => {
       const photoPath = path.join(__dirname, guard.photoUrl);
       if (fs.existsSync(photoPath)) fs.unlinkSync(photoPath);
     }
-
     await usersCollection.deleteOne({ _id: new ObjectId(id) });
     res.json({ success: true, message: 'Guard removed successfully.' });
-
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
+  } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 // ============================================
@@ -505,7 +453,6 @@ app.delete('/api/admin/guards/:id', async (req, res) => {
 // ============================================
 io.on('connection', (socket) => {
   console.log('📱 Connected:', socket.id);
-
   socket.on('guardToggleSlot', async ({ slotCode }) => {
     try {
       const slot = await slotsCollection.findOne({ slotCode });
@@ -513,11 +460,8 @@ io.on('connection', (socket) => {
       const newStatus = slot.status === 'available' ? 'occupied' : 'available';
       await slotsCollection.updateOne({ slotCode }, { $set: { status: newStatus, updatedAt: new Date() } });
       io.emit('slotStatusUpdate', { slotCode, status: newStatus });
-    } catch (err) {
-      console.error('Socket toggle error:', err);
-    }
+    } catch (err) { console.error('Socket toggle error:', err); }
   });
-
   socket.on('disconnect', () => console.log('📱 Disconnected:', socket.id));
 });
 
