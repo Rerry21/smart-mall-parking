@@ -18,21 +18,26 @@ const authRouter      = require('./routes/auth');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
+
+// ============================================
+// ALLOWED ORIGINS
+// ============================================
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3001',
+  `http://${process.env.LOCAL_IP || '192.168.0.102'}:3000`,
+  'https://smart-mall-parking-frontend.vercel.app',
+];
+
+const io = new Server(server, {
   cors: {
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      `http://${process.env.LOCAL_IP || '192.168.0.102'}:3000`,
-    ],
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
   },
 });
 
 // ============================================
 // MANUAL MONGODB SANITIZER
-// Replaces express-mongo-sanitize to avoid
-// the req.query getter-only TypeError
 // ============================================
 function sanitizeMongo(obj) {
   if (obj && typeof obj === 'object') {
@@ -50,34 +55,30 @@ function sanitizeMongo(obj) {
 // SECURITY MIDDLEWARE
 // ============================================
 
-// 1. Helmet — sets secure HTTP headers
+// 1. Helmet
 app.use(helmet());
 
-// 2. CORS — only allow your frontend origins
+// 2. CORS
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    `http://${process.env.LOCAL_IP || '192.168.0.102'}:3000`,
-  ],
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// 3. Body parser — limit request size to 10kb
+// 3. Body parser
 app.use(express.json({ limit: '10kb' }));
 
-// 4. Manual MongoDB sanitize middleware — strips $ and . from body/params
+// 4. MongoDB sanitize
 app.use((req, res, next) => {
   sanitizeMongo(req.body);
   sanitizeMongo(req.params);
   next();
 });
 
-// 5. HPP — prevent HTTP parameter pollution
+// 5. HPP
 app.use(hpp());
 
-// 6. General rate limiter — max 100 requests per 15 min per IP
+// 6. General rate limiter
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -87,7 +88,7 @@ const generalLimiter = rateLimit({
 });
 app.use('/api/', generalLimiter);
 
-// 7. Strict rate limiter for auth routes — max 10 attempts per 15 min
+// 7. Auth rate limiter
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -103,14 +104,14 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
 app.use('/uploads', express.static(uploadsDir));
 
-// ── Multer config for passport photos ──
+// ── Multer config ──
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsDir),
   filename:    (req, file, cb) => cb(null, `guard-${Date.now()}${path.extname(file.originalname)}`),
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|webp/;
     const ok = allowed.test(path.extname(file.originalname).toLowerCase()) && allowed.test(file.mimetype);
@@ -148,7 +149,7 @@ async function connectDB() {
   }
 }
 
-// ── Fine calculator — flat KSh 1,000 for any overstay ──
+// ── Fine calculator ──
 function calculateFine(expiryTime, exitTime) {
   const overstayMs      = exitTime - expiryTime;
   const overstayMinutes = Math.max(0, Math.ceil(overstayMs / (1000 * 60)));
@@ -218,15 +219,13 @@ app.post('/api/bookings', async (req, res) => {
     if (!slot)                       return res.status(404).json({ error: 'Slot not found' });
     if (slot.status !== 'available') return res.status(409).json({ error: 'Slot is not available' });
 
-    // ── Strip + so Safaricom receives 254XXXXXXXXX not +254XXXXXXXXX ──
     const cleanPhone = driverPhone.replace(/^\+/, '');
 
-    // ── Rate: KSh 1/min = KSh 60/hr ──
+    // ── Rate: KSh 1/min ──
     const amountPaid = duration * 1;
     const now        = new Date();
     const expiryTime = new Date(now.getTime() + duration * 60 * 1000);
 
-    // ── Try STK push FIRST — only create booking if it succeeds ──
     const { initiateStkPush } = require('./utils/mpesa');
     let mpesaResponse;
     try {
@@ -236,7 +235,6 @@ app.post('/api/bookings', async (req, res) => {
       return res.status(502).json({ error: 'M-Pesa prompt could not be sent. Check your phone number and try again.' });
     }
 
-    // ── STK succeeded — now create the booking ──
     const newBooking = {
       driverPhone: cleanPhone, slotCode,
       entryTime: now, exitTime: null, expiryTime,
@@ -390,7 +388,6 @@ app.get('/api/admin/dashboard', async (req, res) => {
 // ============================================
 // ADMIN — GUARD MANAGEMENT
 // ============================================
-
 app.get('/api/admin/guards', async (req, res) => {
   try {
     const guards = await usersCollection
