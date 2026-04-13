@@ -1,3 +1,5 @@
+const dns = require('node:dns');
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 require('dotenv').config({ path: '../.env' });
 const { MongoClient, ServerApiVersion } = require('mongodb');
@@ -15,19 +17,17 @@ async function seedAdmin() {
     const db      = client.db('smart_mall_parking');
     const admins  = db.collection('admins');
 
-    // Check if Rerry already exists so we don't duplicate
     const existing = await admins.findOne({ username: 'Rerry' });
     if (existing) {
       console.log('⚠️  Admin "Rerry" already exists — skipping seed.');
       return;
     }
 
-  
     const hashedPassword = await bcrypt.hash('Password123', 12);
 
     await admins.insertOne({
       username:  'Rerry',
-      password:  hashedPassword, 
+      password:  hashedPassword,
       role:      'admin',
       createdAt: new Date(),
     });
