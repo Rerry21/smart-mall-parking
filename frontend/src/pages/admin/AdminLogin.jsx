@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API = process.env.REACT_APP_BACKEND_URL || 'http://localhost:5000';
+
 export default function AdminLogin() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
@@ -18,7 +20,7 @@ export default function AdminLogin() {
     setError('');
 
     try {
-      const res  = await fetch('http://localhost:5000/api/admin-auth/login', {
+      const res  = await fetch(`${API}/api/admin-auth/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ username, password }),
@@ -39,7 +41,6 @@ export default function AdminLogin() {
     }
   };
 
-  // Allow Enter key to submit
   const handleKeyDown = (e) => {
     if (e.key === 'Enter') handleLogin();
   };
@@ -60,7 +61,6 @@ export default function AdminLogin() {
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        /* Subtle animated background grid */
         .admin-login-bg::before {
           content: '';
           position: fixed;
@@ -127,10 +127,8 @@ export default function AdminLogin() {
         }
       `}</style>
 
-      {/* Background grid layer */}
       <div className="admin-login-bg" style={{ position: 'fixed', inset: 0, zIndex: 0 }} />
 
-      {/* Glow blob top-right */}
       <div style={{
         position: 'fixed', top: '-120px', right: '-120px',
         width: '400px', height: '400px', borderRadius: '50%',
@@ -138,7 +136,6 @@ export default function AdminLogin() {
         pointerEvents: 'none', zIndex: 0,
       }} />
 
-      {/* Glow blob bottom-left */}
       <div style={{
         position: 'fixed', bottom: '-100px', left: '-100px',
         width: '350px', height: '350px', borderRadius: '50%',
@@ -146,7 +143,7 @@ export default function AdminLogin() {
         pointerEvents: 'none', zIndex: 0,
       }} />
 
-      {/* ── LOGIN CARD ── */}
+      {/* LOGIN CARD */}
       <div style={{
         position: 'relative', zIndex: 10,
         width: '100%', maxWidth: '420px',
@@ -170,7 +167,6 @@ export default function AdminLogin() {
           borderBottom: '1px solid #252a33',
           textAlign: 'center',
         }}>
-          {/* Shield icon */}
           <div style={{
             display: 'inline-flex',
             alignItems: 'center', justifyContent: 'center',
@@ -198,7 +194,6 @@ export default function AdminLogin() {
             Two Rivers Mall · Restricted Area
           </p>
 
-          {/* Live indicator */}
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: '6px',
             marginTop: '14px',
@@ -218,7 +213,6 @@ export default function AdminLogin() {
         {/* Form */}
         <div style={{ padding: '28px 36px 36px' }}>
 
-          {/* Username */}
           <div style={{ marginBottom: '18px' }}>
             <label style={labelStyle}>Username</label>
             <input
@@ -232,7 +226,6 @@ export default function AdminLogin() {
             />
           </div>
 
-          {/* Password */}
           <div style={{ marginBottom: '24px' }}>
             <label style={labelStyle}>Password</label>
             <input
@@ -246,7 +239,6 @@ export default function AdminLogin() {
             />
           </div>
 
-          {/* Error */}
           {error && (
             <div style={{
               marginBottom: '18px',
@@ -262,7 +254,6 @@ export default function AdminLogin() {
             </div>
           )}
 
-          {/* Submit */}
           <button
             className="login-btn"
             onClick={handleLogin}
@@ -271,7 +262,6 @@ export default function AdminLogin() {
             {loading ? 'Authenticating...' : 'Access Dashboard →'}
           </button>
 
-          {/* Footer note */}
           <p style={{
             textAlign: 'center', marginTop: '20px',
             fontSize: '12px', color: '#3d4455',
