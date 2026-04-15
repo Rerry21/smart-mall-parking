@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import io from "socket.io-client";
 
 const API    = process.env.REACT_APP_API_URL    || 'http://localhost:5000';
 const SOCKET = process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000';
 
 const PHONE_LIMITS = { '+254': 9, '+1': 10, '+44': 10 };
+const RATE_PER_MIN = 1;
 
 function formatCountdown(seconds) {
   if (seconds <= 0) return '00:00';
@@ -15,10 +16,10 @@ function formatCountdown(seconds) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
-// ── Active Booking Banner (top of page) ──
+// ── Active Booking Banner ──
 function ActiveBookingBanner({ booking, onFineRecorded }) {
   const [secondsLeft, setSeconds] = useState(null);
-  const fineRecordedRef           = useRef(false);
+  const fineRecordedRef = useRef(false);
 
   useEffect(() => {
     if (!booking) { setSeconds(null); return; }
@@ -34,7 +35,7 @@ function ActiveBookingBanner({ booking, onFineRecorded }) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [booking]);
+  }, [booking, onFineRecorded]);
 
   if (!booking) return null;
 
@@ -42,9 +43,9 @@ function ActiveBookingBanner({ booking, onFineRecorded }) {
   const isUrgent   = secondsLeft !== null && secondsLeft <= 300 && secondsLeft > 0;
   const isWarning  = secondsLeft !== null && secondsLeft <= 600 && secondsLeft > 300;
 
-  const bg     = isOverstay ? 'rgba(239,68,68,0.15)'   : isUrgent ? 'rgba(239,68,68,0.1)'   : isWarning ? 'rgba(245,158,11,0.1)'   : 'rgba(59,130,246,0.1)';
-  const border = isOverstay ? 'rgba(239,68,68,0.5)'    : isUrgent ? 'rgba(239,68,68,0.3)'   : isWarning ? 'rgba(245,158,11,0.3)'   : 'rgba(59,130,246,0.3)';
-  const color  = isOverstay ? '#f87171'                : isUrgent ? '#fca5a5'               : isWarning ? '#fbbf24'               : '#60a5fa';
+  const bg     = isOverstay ? 'rgba(239,68,68,0.15)' : isUrgent ? 'rgba(239,68,68,0.1)' : isWarning ? 'rgba(245,158,11,0.1)' : 'rgba(59,130,246,0.1)';
+  const border = isOverstay ? 'rgba(239,68,68,0.5)'  : isUrgent ? 'rgba(239,68,68,0.3)' : isWarning ? 'rgba(245,158,11,0.3)' : 'rgba(59,130,246,0.3)';
+  const color  = isOverstay ? '#f87171'               : isUrgent ? '#fca5a5'             : isWarning ? '#fbbf24'             : '#60a5fa';
 
   return (
     <div style={{ margin: '0 0 24px 0', padding: '16px 22px', borderRadius: '16px', background: bg, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
@@ -96,11 +97,9 @@ function AskQuestion({ user }) {
 
   return (
     <>
-      {/* Floating button */}
       <button onClick={() => setOpen(o => !o)} style={{ position: 'fixed', bottom: '32px', right: '32px', zIndex: 200, width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg,#3b82f6,#1d4ed8)', border: 'none', cursor: 'pointer', fontSize: '24px', boxShadow: '0 8px 24px rgba(59,130,246,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {open ? '✕' : '💬'}
       </button>
-
       {open && (
         <div style={{ position: 'fixed', bottom: '100px', right: '32px', zIndex: 200, width: '320px', background: '#13161b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', padding: '24px', boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}>
           <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>Ask a Question</div>
@@ -121,6 +120,7 @@ function AskQuestion({ user }) {
   );
 }
 
+// ── Main Component ──
 const DriverPortal = () => {
   const [user, setUser]                   = useState(null);
   const [slots, setSlots]                 = useState([]);
@@ -137,11 +137,11 @@ const DriverPortal = () => {
   const [bookingPhone, setBookingPhone]       = useState('');
   const [bookingCC, setBookingCC]             = useState('+254');
   const [bookingDuration, setBookingDuration] = useState(60);
-  const [bookingStep, setBookingStep]         = useState('form'); // 'form' | 'stk' | 'success'
+  const [bookingStep, setBookingStep]         = useState('form');
   const [bookingLoading, setBookingLoading]   = useState(false);
   const [bookingError, setBookingError]       = useState('');
 
-  // Slot-level countdowns: { [slotCode]: { secondsLeft, bookingId, driverPhone } }
+  // Slot-level countdowns
   const [slotTimers, setSlotTimers] = useState({});
 
   // Profile state
@@ -156,8 +156,8 @@ const DriverPortal = () => {
   const [profileMsg, setProfileMsg]         = useState('');
   const [profileError, setProfileError]     = useState('');
   const [profileLoading, setProfileLoading] = useState(false);
-  const photoInputRef                       = useRef(null);
-  const socketRef                           = useRef(null);
+  const photoInputRef = useRef(null);
+  const socketRef     = useRef(null);
 
   // ── Load user ──
   useEffect(() => {
@@ -175,43 +175,46 @@ const DriverPortal = () => {
     if (parsed.profilePhoto) setProfilePhoto(parsed.profilePhoto);
   }, []);
 
-  // ── Fetch active booking for banner ──
-  const fetchActiveBooking = async (phone) => {
+  // ── Fetch active booking — FIXED: clears banner when no active booking ──
+  const fetchActiveBooking = useCallback(async (phone) => {
     try {
       const clean = phone.replace(/^\+/, '');
       const res   = await fetch(`${API}/api/bookings/${clean}`);
       const data  = await res.json();
-      if (data.success && data.data.length > 0) {
+      if (data.success && data.data && data.data.length > 0) {
         setActiveBooking(data.data[0]);
+      } else {
+        setActiveBooking(null); // ← KEY FIX: clear banner when booking no longer exists
       }
     } catch (e) { console.error(e); }
-  };
+  }, []);
 
   // ── Fetch slots ──
-  const fetchSlots = async () => {
+  const fetchSlots = useCallback(async () => {
     try {
       const res  = await fetch(`${API}/api/slots`);
       const data = await res.json();
       if (data.success) {
         const normalized = data.data.map(s => ({
           id: s._id, number: s.slotCode,
-          floor:   s.floor    || 'Level A',
-          section: s.section  || 'A',
-          type:    s.type     || 'Standard',
-          available: s.status === 'available',
-          driverPhone:  s.currentDriverPhone || null,
-          driverName:   s.currentDriverName  || null,
-          plateNumber:  s.currentPlateNumber || null,
-          expiryTime:   s.currentExpiryTime  || null,
-          bookingId:    s.currentBookingId   || null,
+          floor:       s.floor    || 'Level A',
+          section:     s.section  || 'A',
+          type:        s.type     || 'Standard',
+          available:   s.status === 'available',
+          driverPhone: s.currentDriverPhone || null,
+          driverName:  s.currentDriverName  || null,
+          plateNumber: s.currentPlateNumber || null,
+          expiryTime:  s.currentExpiryTime  || null,
+          bookingId:   s.currentBookingId   || null,
         }));
         setSlots(normalized);
         setFilteredSlots(normalized);
       }
     } catch (err) { console.error('Failed to fetch slots:', err); }
     finally { setLoading(false); }
-  };
+  }, []);
 
+  // ── Socket + initial fetch ──
   useEffect(() => {
     fetchSlots();
     const socket = io(SOCKET);
@@ -226,12 +229,15 @@ const DriverPortal = () => {
     });
 
     return () => socket.disconnect();
-  }, []);
+  }, [fetchSlots]);
 
-  // ── Fetch active booking once user is loaded ──
+  // ── Fetch active booking + poll every 15s — FIXED ──
   useEffect(() => {
-    if (user?.phone) fetchActiveBooking(user.phone);
-  }, [user]);
+    if (!user?.phone) return;
+    fetchActiveBooking(user.phone);
+    const interval = setInterval(() => fetchActiveBooking(user.phone), 15000);
+    return () => clearInterval(interval);
+  }, [user, fetchActiveBooking]);
 
   // ── Countdown timers per slot ──
   useEffect(() => {
@@ -240,8 +246,7 @@ const DriverPortal = () => {
         const updates = {};
         prev.forEach(s => {
           if (!s.available && s.expiryTime) {
-            const secs = Math.floor((new Date(s.expiryTime) - Date.now()) / 1000);
-            updates[s.number] = secs;
+            updates[s.number] = Math.floor((new Date(s.expiryTime) - Date.now()) / 1000);
           }
         });
         setSlotTimers(updates);
@@ -267,10 +272,9 @@ const DriverPortal = () => {
     window.location.href = '/';
   };
 
-  const RATE_PER_MIN = 1;
-  const calcAmount   = (mins) => mins * RATE_PER_MIN;
+  const calcAmount = (mins) => mins * RATE_PER_MIN;
 
-  // ── Step 1: Show STK banner for 1s then book ──
+  // ── Book slot ──
   const handlePay = async () => {
     const maxDigits = PHONE_LIMITS[bookingCC] || 10;
     if (bookingPhone.length !== maxDigits) {
@@ -278,12 +282,12 @@ const DriverPortal = () => {
       return;
     }
     setBookingError('');
-    setBookingStep('stk');   // show green STK banner
+    setBookingStep('stk');
 
     setTimeout(async () => {
       setBookingLoading(true);
       try {
-        const fullPhone = bookingCC.replace('+','') + bookingPhone;
+        const fullPhone = bookingCC.replace('+', '') + bookingPhone;
         const res  = await fetch(`${API}/api/bookings/demo`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -297,7 +301,6 @@ const DriverPortal = () => {
         });
         const data = await res.json();
         if (res.ok) {
-          // Update slot locally
           setSlots(prev => prev.map(s =>
             s.number === selectedSlot.number
               ? { ...s, available: false, driverPhone: fullPhone, driverName: user?.name || '', plateNumber: user?.plateNumber || '', expiryTime: data.booking.expiryTime, bookingId: data.booking.bookingId }
@@ -320,11 +323,11 @@ const DriverPortal = () => {
         setBookingStep('form');
       }
       setBookingLoading(false);
-    }, 1200);  // 1.2s STK banner display
+    }, 1200);
   };
 
   // ── Fine recording ──
-  const handleFineRecorded = async (booking) => {
+  const handleFineRecorded = useCallback(async (booking) => {
     try {
       await fetch(`${API}/api/fines/record`, {
         method:  'POST',
@@ -332,14 +335,14 @@ const DriverPortal = () => {
         body: JSON.stringify({
           bookingId:       booking._id || booking.bookingId,
           driverPhone:     booking.driverPhone,
-          driverName:      booking.driverName   || user?.name || '',
-          plateNumber:     booking.plateNumber  || user?.plateNumber || '',
+          driverName:      booking.driverName  || user?.name        || '',
+          plateNumber:     booking.plateNumber || user?.plateNumber || '',
           slotCode:        booking.slotCode,
           overstayMinutes: 1,
         }),
       });
     } catch (e) { console.error(e); }
-  };
+  }, [user?.name, user?.plateNumber]);
 
   // ── Profile save ──
   const handleSaveProfile = async () => {
@@ -401,8 +404,8 @@ const DriverPortal = () => {
         ::-webkit-scrollbar-thumb { background:#2a2f3d; border-radius:99px; }
         @keyframes fadeUp   { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
         @keyframes stkPulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
-        .slot-card  { transition:transform 0.18s,box-shadow 0.18s; }
         .slot-card:hover { transform:translateY(-3px); }
+        .slot-card  { transition:transform 0.18s,box-shadow 0.18s; }
         .filter-btn, .prof-tab { transition:all 0.18s; cursor:pointer; border:none; font-family:'DM Sans',sans-serif; }
         input:focus, select:focus, textarea:focus { outline:none; border-color:rgba(59,130,246,0.6) !important; }
       `}</style>
@@ -490,7 +493,7 @@ const DriverPortal = () => {
           {filteredSlots.map((slot, i) => {
             const secs       = slotTimers[slot.number];
             const isOverstay = !slot.available && secs !== undefined && secs <= 0;
-            const isMySlot   = !slot.available && slot.driverPhone && user?.phone && slot.driverPhone === user.phone.replace(/^\+/,'');
+            const isMySlot   = !slot.available && slot.driverPhone && user?.phone && slot.driverPhone === user.phone.replace(/^\+/, '');
 
             return (
               <div key={slot.id} className="slot-card" onClick={() => slot.available && setSelectedSlot(slot)}
@@ -500,18 +503,14 @@ const DriverPortal = () => {
                   cursor: slot.available ? 'pointer' : 'default',
                   animation: `fadeUp 0.4s ${i * 0.03}s ease both`,
                 }}>
-
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                   <div style={{ fontFamily: "'Syne',sans-serif", fontSize: '26px', fontWeight: 800, color: slot.available ? '#fff' : 'rgba(255,255,255,0.35)' }}>{slot.number}</div>
                   <span style={{ padding: '3px 9px', borderRadius: '20px', fontSize: '10px', fontWeight: 700, background: slot.available ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.12)', color: slot.available ? '#4ade80' : '#f87171' }}>
                     {slot.available ? 'FREE' : isOverstay ? '⚠️ OVER' : 'TAKEN'}
                   </span>
                 </div>
-
                 <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginBottom: '4px' }}>{slot.floor} · Section {slot.section}</div>
                 <div style={{ display: 'inline-block', fontSize: '10px', fontWeight: 600, padding: '2px 8px', borderRadius: '6px', background: slot.type === 'EV' ? 'rgba(34,197,94,0.12)' : slot.type === 'Premium' ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.06)', color: slot.type === 'EV' ? '#4ade80' : slot.type === 'Premium' ? '#fbbf24' : 'rgba(255,255,255,0.3)' }}>{slot.type}</div>
-
-                {/* Countdown on card */}
                 {!slot.available && secs !== undefined && (
                   <div style={{ marginTop: '10px', padding: '7px 10px', borderRadius: '8px', background: isOverstay ? 'rgba(239,68,68,0.12)' : 'rgba(59,130,246,0.08)', border: `1px solid ${isOverstay ? 'rgba(239,68,68,0.3)' : 'rgba(59,130,246,0.2)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)' }}>{isOverstay ? '⚠️ Over' : '⏱'}</span>
@@ -520,12 +519,9 @@ const DriverPortal = () => {
                     </span>
                   </div>
                 )}
-
-                {/* "Your slot" badge */}
                 {isMySlot && (
                   <div style={{ marginTop: '8px', fontSize: '10px', color: '#60a5fa', fontWeight: 600 }}>🔵 Your slot</div>
                 )}
-
                 {slot.available && (
                   <div style={{ marginTop: '14px', padding: '8px', borderRadius: '10px', textAlign: 'center', background: 'rgba(59,130,246,0.12)', border: '1px solid rgba(59,130,246,0.2)', fontSize: '12px', fontWeight: 600, color: '#60a5fa' }}>Select Slot</div>
                 )}
@@ -547,7 +543,6 @@ const DriverPortal = () => {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '24px' }}>
           <div style={{ background: '#13161b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', padding: '36px', width: '100%', maxWidth: '420px', boxShadow: '0 32px 80px rgba(0,0,0,0.6)' }}>
 
-            {/* ── SUCCESS STATE ── */}
             {bookingStep === 'success' && (
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
                 <div style={{ fontSize: '52px', marginBottom: '16px' }}>✅</div>
@@ -556,7 +551,6 @@ const DriverPortal = () => {
               </div>
             )}
 
-            {/* ── STK BANNER STATE ── */}
             {bookingStep === 'stk' && (
               <div style={{ textAlign: 'center', padding: '20px 0' }}>
                 <div style={{ fontSize: '48px', marginBottom: '16px', animation: 'stkPulse 1s infinite' }}>📱</div>
@@ -568,19 +562,17 @@ const DriverPortal = () => {
               </div>
             )}
 
-            {/* ── FORM STATE ── */}
             {bookingStep === 'form' && (
               <>
                 <h2 style={{ fontFamily: "'Syne',sans-serif", fontSize: '22px', fontWeight: 800, marginBottom: '4px' }}>Book Slot {selectedSlot.number}</h2>
                 <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '28px' }}>{selectedSlot.floor} · Section {selectedSlot.section} · {selectedSlot.type}</p>
 
-                {/* Duration */}
                 <div style={{ marginBottom: '18px' }}>
                   <label style={modalLabel}>Parking Duration</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '8px', marginBottom: '10px' }}>
                     {[30, 60, 120, 180].map(d => (
                       <button key={d} onClick={() => setBookingDuration(d)} style={{ padding: '10px', borderRadius: '10px', border: 'none', cursor: 'pointer', background: bookingDuration === d ? '#3b82f6' : 'rgba(255,255,255,0.06)', color: bookingDuration === d ? '#fff' : 'rgba(255,255,255,0.5)', fontFamily: "'DM Sans',sans-serif", fontSize: '13px', fontWeight: 600 }}>
-                        {d < 60 ? `${d}m` : `${d/60}h`}
+                        {d < 60 ? `${d}m` : `${d / 60}h`}
                       </button>
                     ))}
                   </div>
@@ -590,7 +582,6 @@ const DriverPortal = () => {
                   </div>
                 </div>
 
-                {/* Phone */}
                 <div style={{ marginBottom: '24px' }}>
                   <label style={modalLabel}>M-Pesa Phone Number</label>
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -600,7 +591,7 @@ const DriverPortal = () => {
                       <option value="+44">🇬🇧 +44</option>
                     </select>
                     <input type="tel" value={bookingPhone}
-                      onChange={e => { const val = e.target.value.replace(/\D/g,''); const max = PHONE_LIMITS[bookingCC]||10; if (val.length<=max) setBookingPhone(val); }}
+                      onChange={e => { const val = e.target.value.replace(/\D/,''); const max = PHONE_LIMITS[bookingCC]||10; if (val.length<=max) setBookingPhone(val); }}
                       placeholder={`${PHONE_LIMITS[bookingCC]||10} digits`}
                       style={{ ...modalInput, flex: 1 }} />
                   </div>
