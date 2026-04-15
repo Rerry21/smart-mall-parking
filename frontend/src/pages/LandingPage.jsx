@@ -116,7 +116,7 @@ export default function LandingPage() {
       <div style={{ background: '#13161b', borderTop: '1px solid #252a33', borderBottom: '1px solid #252a33' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '0 48px', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)' }}>
           {[
-            { icon: '🅿️', val: '248',    label: 'Parking Slots'   },
+            { icon: '🅿️', val: '51',    label: 'Parking Slots'   },
             { icon: '🏢', val: '3',      label: 'Levels'           },
             { icon: '🔒', val: '24/7',   label: 'Security'         },
             { icon: '💚', val: 'M-Pesa', label: 'Instant Payment'  },
