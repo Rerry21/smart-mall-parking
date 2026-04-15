@@ -1,25 +1,38 @@
+// backend/seedSlots.js
 const dns = require('node:dns');
-dns.setServers(['8.8.8.8', '1.1.1.1']); // Fix for DNS error
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
 
 console.log("🚀 Starting seed process...");
 
-// Create 50 parking slots organized by 3 levels
-const levels = ['A', 'B', 'C'];
-const slotsPerLevel = [17, 17, 16]; // 50 slots total
+// 51 slots: Level A (A01-A17), Level B (B01-B17), Level C (C01-C17)
+const levels = [
+  { floor: 'Level A', prefix: 'A' },
+  { floor: 'Level B', prefix: 'B' },
+  { floor: 'Level C', prefix: 'C' },
+];
 
-const slots = levels.flatMap((level, levelIndex) => {
-  return Array.from({ length: slotsPerLevel[levelIndex] }, (_, i) => ({
-    slotCode: `${level}${String(i + 1).padStart(2, '0')}`, // e.g., A01, A02, ...
-    level,
-    status: "available",
-    isOccupied: false,
-    occupiedBy: null,
-    lastUpdated: new Date(),
-    vehicleType: (i % 3 === 0) ? "car" : (i % 2 === 0) ? "bike" : "car",
-  }));
+const slots = [];
+
+levels.forEach(({ floor, prefix }) => {
+  for (let i = 1; i <= 17; i++) {
+    const slotCode = `${prefix}${String(i).padStart(2, '0')}`;
+    // Mix of types: every 5th slot is EV, every 3rd is Premium, rest Standard
+    const type = (i % 5 === 0) ? 'EV' : (i % 3 === 0) ? 'Premium' : 'Standard';
+    slots.push({
+      slotCode,
+      floor,
+      section:          prefix,   // Section A, B, or C
+      type,
+      status:           'available',
+      currentDriverPhone: null,
+      currentBookingId:   null,
+      lastUpdated:      new Date(),
+      createdAt:        new Date(),
+    });
+  }
 });
 
 async function seedSlots() {
@@ -29,19 +42,23 @@ async function seedSlots() {
     await client.connect();
     console.log("✅ Connected to MongoDB Atlas");
 
-    const db = client.db("smart_mall_parking");
+    const db         = client.db("smart_mall_parking");
     const collection = db.collection("slots");
 
     await collection.deleteMany({});
-    console.log("🗑️ Cleared previous slots");
+    console.log("🗑️  Cleared previous slots");
 
     const result = await collection.insertMany(slots);
     console.log(`🎉 SUCCESS! Seeded ${result.insertedCount} parking slots`);
+    console.log(`   → Level A: A01–A17`);
+    console.log(`   → Level B: B01–B17`);
+    console.log(`   → Level C: C01–C17`);
+
   } catch (error) {
     console.error("❌ ERROR:", error.message);
   } finally {
     await client.close();
-    console.log("🔚 Seeding finished.");
+    console.log("🔚 Seeding finished. Run your backend now.");
   }
 }
 
